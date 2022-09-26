@@ -132,3 +132,5 @@ dist
 #
 Flattened.sol
 artifacts/
+cache/
+cache/solidity-files-cache.json

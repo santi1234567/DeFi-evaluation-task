@@ -6,13 +6,37 @@ import "hardhat/console.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
 import {DataTypes} from "@aave/protocol-v2/contracts/protocol/libraries/types/DataTypes.sol";
 import {IERC20} from "@aave/protocol-v2/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
+import {IProtocolDataProvider} from "./interfaces/IProtocolDataProvider.sol";
+import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
+
+//import {IAToken} from "@aave/protocol-v2/contracts/interfaces/IAToken.sol";
+//import {IStableDebtToken} from "@aave/protocol-v2/contracts/interfaces/IStableDebtToken.sol";
+//import {IVariableDebtToken} from "@aave/protocol-v2/contracts/interfaces/IVariableDebtToken.sol";
 
 contract AaveV2Wrapper {
-    // Goerli
-    //address constant POOL = address(0x4bd5643ac6f66a5237E18bfA7d47cF22f1c9F210);
-
     // Mainnet
-    address constant POOL = address(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9);
+    address constant PROTOCOL_DATA_PROVIDER =
+        address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+    IProtocolDataProvider constant dataProvider =
+        IProtocolDataProvider(PROTOCOL_DATA_PROVIDER);
+
+    address POOL;
+    ILendingPool lendingPool;
+
+    constructor() public {
+        POOL = ILendingPoolAddressesProvider(dataProvider.ADDRESSES_PROVIDER())
+            .getLendingPool();
+        lendingPool = ILendingPool(POOL);
+    }
+
+    event DepositAndBorrow(
+        address collateralToken,
+        uint256 collateralAmount,
+        address debtToken,
+        uint256 debtAmount,
+        uint256 rateMode,
+        uint256 user
+    );
 
     // deposit collateralToken , borrow debtToken. Must recieve contract address and amounts for both tokens.
     // Note: Balance to deposit collateral can be taken from caller
@@ -20,14 +44,35 @@ contract AaveV2Wrapper {
         address collateralToken,
         uint256 collateralAmount,
         address debtToken,
-        uint256 debtAmount
+        uint256 debtAmount,
+        uint256 rateMode
     ) public {
-        _deposit(collateralToken, collateralAmount, msg.sender);
-        /*  DataTypes.ReserveData memory aCollateralTokenAddress = ILendingPool(
-            POOL_ADDRESS_PROVIDER
-        ).getReserveData(collateralToken); */
-        //DataTypes.InterestRateMode mode = DataTypes.InterestRateMode.STABLE;
-        _borrow(debtToken, debtAmount, 1, msg.sender);
+        IERC20(collateralToken).transferFrom(
+            msg.sender,
+            address(this),
+            collateralAmount
+        );
+        IERC20(collateralToken).approve(POOL, collateralAmount);
+        _deposit(collateralToken, collateralAmount);
+
+        // TODO: Log user balance to keep track
+
+        /*   (
+            address aCollateralTokenAddress,
+            address stableDebtTokenAddress,
+            address variableDebtTokenAddress
+        ) = dataProvider.getReserveTokensAddresses(collateralToken);
+        console.log(stableDebtTokenAddress); */
+        _borrow(debtToken, debtAmount, rateMode);
+
+        emit DepositAndBorrow(
+            collateralToken,
+            collateralAmount,
+            debtToken,
+            debtAmount,
+            rateMode,
+            msg.sender
+        );
     }
 
     // payback debtToken and withdraw the collateralToken
@@ -36,7 +81,8 @@ contract AaveV2Wrapper {
         address collateralToken,
         uint256 collateralAmount,
         address debtToken,
-        uint256 debtAmount
+        uint256 debtAmount,
+        uint256 rateMode
     ) public {}
 
     /**
@@ -45,18 +91,9 @@ contract AaveV2Wrapper {
      * Note: When depositing, the LendingPool contract must have allowance() to spend funds on behalf of msg.sender for at-least amount for the asset being deposited. This can be done via the standard ERC20 approve() method.
      * @param token The address of the underlying asset to deposit
      * @param amount The amount to be deposited
-     * @param user The address that will receive the aTokens, same as msg.sender if the user
-     *   wants to receive them on his own wallet, or a different address if the beneficiary of aTokens
-     *   is a different wallet
      **/
-    function _deposit(
-        address token,
-        uint256 amount,
-        address user
-    ) internal {
-        IERC20(token).transferFrom(user, address(this), amount);
-        IERC20(token).approve(POOL, amount);
-        ILendingPool(POOL).deposit(token, amount, user, 0);
+    function _deposit(address token, uint256 amount) internal {
+        lendingPool.deposit(token, amount, address(this), 0);
     }
 
     /**
@@ -69,17 +106,13 @@ contract AaveV2Wrapper {
      * @param token The address of the underlying asset to borrow
      * @param amount The amount to be borrowed
      * @param interestRateMode The interest rate mode at which the user wants to borrow: 1 for Stable, 2 for Variable
-     * @param user Address of the user who will receive the debt. Should be the address of the borrower itself
-     * calling the function if he wants to borrow against his own collateral, or the address of the credit delegator
-     * if he has been given credit delegation allowance
      **/
     function _borrow(
         address token,
         uint256 amount,
-        uint256 interestRateMode,
-        address user
+        uint256 interestRateMode
     ) internal {
-        ILendingPool(POOL).borrow(token, amount, interestRateMode, 0, user);
+        lendingPool.borrow(token, amount, interestRateMode, 0, address(this));
     }
 
     /**
@@ -98,7 +131,7 @@ contract AaveV2Wrapper {
         uint256 amount,
         address to
     ) internal returns (uint256) {
-        return ILendingPool(POOL).withdraw(token, amount, to);
+        return lendingPool.withdraw(token, amount, to);
     }
 
     /**
@@ -119,6 +152,6 @@ contract AaveV2Wrapper {
         uint256 rateMode,
         address user
     ) external returns (uint256) {
-        return ILendingPool(POOL).repay(token, amount, rateMode, user);
+        return lendingPool.repay(token, amount, rateMode, user);
     }
 }

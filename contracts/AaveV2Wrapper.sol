@@ -35,7 +35,16 @@ contract AaveV2Wrapper {
         address debtToken,
         uint256 debtAmount,
         uint256 rateMode,
-        uint256 user
+        address user
+    );
+
+    event PaybackAndWithdraw(
+        address collateralToken,
+        uint256 collateralAmount,
+        address debtToken,
+        uint256 debtAmount,
+        uint256 rateMode,
+        address user
     );
 
     // deposit collateralToken , borrow debtToken. Must recieve contract address and amounts for both tokens.
@@ -57,13 +66,14 @@ contract AaveV2Wrapper {
 
         // TODO: Log user balance to keep track
 
-        /*   (
-            address aCollateralTokenAddress,
+        /*         (
+            address aDebtTokenAddress,
             address stableDebtTokenAddress,
             address variableDebtTokenAddress
-        ) = dataProvider.getReserveTokensAddresses(collateralToken);
-        console.log(stableDebtTokenAddress); */
+        ) = dataProvider.getReserveTokensAddresses(debtToken); */
         _borrow(debtToken, debtAmount, rateMode);
+
+        IERC20(debtToken).transfer(msg.sender, debtAmount);
 
         emit DepositAndBorrow(
             collateralToken,
@@ -83,7 +93,16 @@ contract AaveV2Wrapper {
         address debtToken,
         uint256 debtAmount,
         uint256 rateMode
-    ) public {}
+    ) public {
+        emit PaybackAndWithdraw(
+            collateralToken,
+            collateralAmount,
+            debtToken,
+            debtAmount,
+            rateMode,
+            msg.sender
+        );
+    }
 
     /**
      * @dev Deposits an `amount` of underlying asset into the reserve, receiving in return overlying aTokens.
@@ -121,17 +140,13 @@ contract AaveV2Wrapper {
      * @param token The address of the underlying asset to withdraw
      * @param amount The underlying amount to be withdrawn
      *   - Send the value type(uint256).max in order to withdraw the whole aToken balance
-     * @param to Address that will receive the underlying, same as msg.sender if the user
-     *   wants to receive it on his own wallet, or a different address if the beneficiary is a
-     *   different wallet
      * @return The final amount withdrawn
      **/
-    function _withdraw(
-        address token,
-        uint256 amount,
-        address to
-    ) internal returns (uint256) {
-        return lendingPool.withdraw(token, amount, to);
+    function _withdraw(address token, uint256 amount)
+        internal
+        returns (uint256)
+    {
+        return lendingPool.withdraw(token, amount, address(this));
     }
 
     /**
@@ -141,17 +156,13 @@ contract AaveV2Wrapper {
      * @param amount The amount to repay
      * - Send the value type(uint256).max in order to repay the whole debt for `asset` on the specific `debtMode`
      * @param rateMode The interest rate mode at of the debt the user wants to repay: 1 for Stable, 2 for Variable
-     * @param user Address of the user who will get his debt reduced/removed. Should be the address of the
-     * user calling the function if he wants to reduce/remove his own debt, or the address of any other
-     * other borrower whose debt should be removed
      * @return The final amount repaid
      **/
     function repay(
         address token,
         uint256 amount,
-        uint256 rateMode,
-        address user
+        uint256 rateMode
     ) external returns (uint256) {
-        return lendingPool.repay(token, amount, rateMode, user);
+        return lendingPool.repay(token, amount, rateMode, address(this));
     }
 }

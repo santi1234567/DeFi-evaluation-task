@@ -60,7 +60,6 @@ describe("AaveV2Wrapper tests", function () {
 			const debtAmount = ethers.utils.parseEther("1");
 			const rateMode = 1; // Stable
 			const previousWETHBalance = await weth.balanceOf(tokenHolder.address);
-			console.log(previousWETHBalance);
 
 			await dai
 				.connect(tokenHolder)
@@ -101,8 +100,106 @@ describe("AaveV2Wrapper tests", function () {
 
 			const newWETHBalance = await weth.balanceOf(tokenHolder.address);
 			expect(newWETHBalance).to.equal(debtAmount.add(previousWETHBalance));
+
+			expect(
+				await aaveV2Wrapper.getUserDepositBalance(
+					mainnetDAIContractAddress,
+					tokenHolder.address
+				)
+			).to.equal(collateralAmount);
+			expect(
+				await aaveV2Wrapper.getUserDebtBalance(
+					mainnetWETHContractAddress,
+					tokenHolder.address,
+					rateMode
+				)
+			).to.equal(debtAmount);
 		});
 	});
 
-	describe("paybackAndWithdraw tests", function () {});
+	describe("paybackAndWithdraw tests", function () {
+		it("Should payback and withdraw funds correctly", async function () {
+			const { aaveV2Wrapper, dai, weth, owner, tokenHolder } =
+				await loadFixture(deployFixture);
+			const collateralToken = dai.address;
+			const collateralAmount = ethers.utils.parseUnits("10000");
+			const debtToken = weth.address;
+			const debtAmount = ethers.utils.parseEther("1");
+			const rateMode = 1; // Stable
+			const previousWETHBalance = await weth.balanceOf(tokenHolder.address);
+			const withdrawAmount = collateralAmount.mul(8).div(10); //80%
+			await dai
+				.connect(tokenHolder)
+				.approve(aaveV2Wrapper.address, collateralAmount);
+
+			await aaveV2Wrapper
+				.connect(tokenHolder)
+				.depositAndBorrow(
+					collateralToken,
+					collateralAmount,
+					debtToken,
+					debtAmount,
+					rateMode
+				);
+
+			await weth
+				.connect(tokenHolder)
+				.approve(aaveV2Wrapper.address, debtAmount);
+
+			expect(
+				await aaveV2Wrapper
+					.connect(tokenHolder)
+					.paybackAndWithdraw(
+						collateralToken,
+						withdrawAmount,
+						debtToken,
+						debtAmount,
+						rateMode
+					)
+			)
+				.to.emit(aaveV2Wrapper, "PaybackAndWithdraw")
+				.withArgs(
+					collateralToken,
+					withdrawAmount,
+					debtAmount,
+					debtAmount,
+					rateMode,
+					tokenHolder.address
+				);
+			const aTokenBalance = await new ethers.Contract(
+				mainnetaDAIContractAddress,
+				IATokenABI,
+				tokenHolder
+			).balanceOf(aaveV2Wrapper.address);
+			expect(aTokenBalance).to.be.lessThanOrEqual(
+				collateralAmount.sub(withdrawAmount).mul(101).div(100) //101%, to contemplate interests
+			);
+
+			const stableDebtTokenBalance = await new ethers.Contract(
+				mainnetWETHStableDebtContractAddress,
+				StableDebtTokenABI,
+				tokenHolder
+			).balanceOf(aaveV2Wrapper.address);
+			expect(stableDebtTokenBalance).to.be.lessThanOrEqual(
+				debtAmount.mul(1).div(100) //1 %, to contemplate interests
+			);
+
+			const newWETHBalance = await weth.balanceOf(tokenHolder.address);
+			expect(newWETHBalance).to.equal(previousWETHBalance);
+
+			expect(
+				await aaveV2Wrapper.getUserDepositBalance(
+					mainnetDAIContractAddress,
+					tokenHolder.address
+				)
+			).to.equal(collateralAmount.sub(withdrawAmount));
+			expect(
+				await aaveV2Wrapper.getUserDebtBalance(
+					mainnetWETHContractAddress,
+					tokenHolder.address,
+					rateMode
+				)
+			).to.equal(0);
+		});
+	});
 });

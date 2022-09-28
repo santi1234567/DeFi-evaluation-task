@@ -29,6 +29,9 @@ contract AaveV2Wrapper {
         lendingPool = ILendingPool(POOL);
     }
 
+    mapping(address => mapping(address => uint256)) userDeposits;
+    mapping(address => mapping(address => mapping(uint256 => uint256))) userDebts;
+
     event DepositAndBorrow(
         address collateralToken,
         uint256 collateralAmount,
@@ -47,7 +50,7 @@ contract AaveV2Wrapper {
         address user
     );
 
-    // deposit collateralToken , borrow debtToken. Must recieve contract address and amounts for both tokens.
+    // deposit collateralToken, borrow debtToken. Must recieve contract address and amounts for both tokens.
     // Note: Balance to deposit collateral can be taken from caller
     function depositAndBorrow(
         address collateralToken,
@@ -63,8 +66,7 @@ contract AaveV2Wrapper {
         );
         IERC20(collateralToken).approve(POOL, collateralAmount);
         _deposit(collateralToken, collateralAmount);
-
-        // TODO: Log user balance to keep track
+        userDeposits[collateralToken][msg.sender] += collateralAmount;
 
         /*         (
             address aDebtTokenAddress,
@@ -72,7 +74,7 @@ contract AaveV2Wrapper {
             address variableDebtTokenAddress
         ) = dataProvider.getReserveTokensAddresses(debtToken); */
         _borrow(debtToken, debtAmount, rateMode);
-
+        userDebts[debtToken][msg.sender][rateMode] += debtAmount;
         IERC20(debtToken).transfer(msg.sender, debtAmount);
 
         emit DepositAndBorrow(
@@ -94,6 +96,16 @@ contract AaveV2Wrapper {
         uint256 debtAmount,
         uint256 rateMode
     ) public {
+        IERC20(debtToken).transferFrom(msg.sender, address(this), debtAmount);
+        IERC20(debtToken).approve(POOL, debtAmount);
+        _repay(debtToken, debtAmount, rateMode);
+        userDebts[debtToken][msg.sender][rateMode] -= debtAmount;
+
+        _withdraw(collateralToken, collateralAmount);
+
+        IERC20(collateralToken).transfer(msg.sender, collateralAmount);
+        userDeposits[collateralToken][msg.sender] -= collateralAmount;
+
         emit PaybackAndWithdraw(
             collateralToken,
             collateralAmount,
@@ -158,11 +170,27 @@ contract AaveV2Wrapper {
      * @param rateMode The interest rate mode at of the debt the user wants to repay: 1 for Stable, 2 for Variable
      * @return The final amount repaid
      **/
-    function repay(
+    function _repay(
         address token,
         uint256 amount,
         uint256 rateMode
-    ) external returns (uint256) {
+    ) internal returns (uint256) {
         return lendingPool.repay(token, amount, rateMode, address(this));
+    }
+
+    function getUserDepositBalance(address token, address user)
+        public
+        view
+        returns (uint256)
+    {
+        return userDeposits[token][user];
+    }
+
+    function getUserDebtBalance(
+        address token,
+        address user,
+        uint256 rateMode
+    ) public view returns (uint256) {
+        return userDebts[token][user][rateMode];
     }
 }

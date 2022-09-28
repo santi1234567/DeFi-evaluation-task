@@ -59,32 +59,37 @@ contract AaveV2Wrapper {
         uint256 debtAmount,
         uint256 rateMode
     ) public {
-        IERC20(collateralToken).transferFrom(
-            msg.sender,
-            address(this),
-            collateralAmount
-        );
-        IERC20(collateralToken).approve(POOL, collateralAmount);
-        _deposit(collateralToken, collateralAmount);
-        userDeposits[collateralToken][msg.sender] += collateralAmount;
+        if (collateralAmount > 0) {
+            IERC20(collateralToken).transferFrom(
+                msg.sender,
+                address(this),
+                collateralAmount
+            );
+            IERC20(collateralToken).approve(POOL, collateralAmount);
+            _deposit(collateralToken, collateralAmount);
+            userDeposits[collateralToken][msg.sender] += collateralAmount;
+        }
 
         /*         (
             address aDebtTokenAddress,
             address stableDebtTokenAddress,
             address variableDebtTokenAddress
         ) = dataProvider.getReserveTokensAddresses(debtToken); */
-        _borrow(debtToken, debtAmount, rateMode);
-        userDebts[debtToken][msg.sender][rateMode] += debtAmount;
-        IERC20(debtToken).transfer(msg.sender, debtAmount);
 
-        emit DepositAndBorrow(
-            collateralToken,
-            collateralAmount,
-            debtToken,
-            debtAmount,
-            rateMode,
-            msg.sender
-        );
+        if (debtAmount > 0) {
+            _borrow(debtToken, debtAmount, rateMode);
+            userDebts[debtToken][msg.sender][rateMode] += debtAmount;
+            IERC20(debtToken).transfer(msg.sender, debtAmount);
+
+            emit DepositAndBorrow(
+                collateralToken,
+                collateralAmount,
+                debtToken,
+                debtAmount,
+                rateMode,
+                msg.sender
+            );
+        }
     }
 
     // payback debtToken and withdraw the collateralToken

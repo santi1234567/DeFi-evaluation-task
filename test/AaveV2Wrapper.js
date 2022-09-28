@@ -115,6 +115,167 @@ describe("AaveV2Wrapper tests", function () {
 				)
 			).to.equal(debtAmount);
 		});
+		it("Should allow to deposit without borrowing funds", async function () {
+			const { aaveV2Wrapper, dai, weth, owner, tokenHolder } =
+				await loadFixture(deployFixture);
+			const collateralToken = dai.address;
+			const collateralAmount = ethers.utils.parseUnits("10000");
+			const debtToken = weth.address;
+			const debtAmount = 0;
+			const rateMode = 1; // Stable
+			await dai
+				.connect(tokenHolder)
+				.approve(aaveV2Wrapper.address, collateralAmount);
+			expect(
+				await aaveV2Wrapper
+					.connect(tokenHolder)
+					.depositAndBorrow(
+						collateralToken,
+						collateralAmount,
+						debtToken,
+						debtAmount,
+						rateMode
+					)
+			)
+				.to.emit(aaveV2Wrapper, "DepositAndBorrow")
+				.withArgs(
+					collateralToken,
+					collateralAmount,
+					debtAmount,
+					debtAmount,
+					rateMode,
+					tokenHolder.address
+				);
+			const aTokenBalance = await new ethers.Contract(
+				mainnetaDAIContractAddress,
+				IATokenABI,
+				tokenHolder
+			).balanceOf(aaveV2Wrapper.address);
+			expect(aTokenBalance).to.be.greaterThanOrEqual(collateralAmount);
+			const stableDebtTokenBalance = await new ethers.Contract(
+				mainnetWETHStableDebtContractAddress,
+				StableDebtTokenABI,
+				tokenHolder
+			).balanceOf(aaveV2Wrapper.address);
+			expect(stableDebtTokenBalance).to.equal(ethers.BigNumber.from(0));
+			expect(
+				await aaveV2Wrapper.getUserDepositBalance(
+					mainnetDAIContractAddress,
+					tokenHolder.address
+				)
+			).to.equal(collateralAmount);
+			expect(
+				await aaveV2Wrapper.getUserDebtBalance(
+					mainnetWETHContractAddress,
+					tokenHolder.address,
+					rateMode
+				)
+			).to.equal(ethers.BigNumber.from(0));
+		});
+
+		it("Should allow to borrow without depositing funds", async function () {
+			const { aaveV2Wrapper, dai, weth, owner, tokenHolder } =
+				await loadFixture(deployFixture);
+			const collateralToken = dai.address;
+			const collateralAmount = ethers.utils.parseUnits("10000");
+			const debtToken = weth.address;
+			const debtAmount = ethers.utils.parseEther("1");
+			const rateMode = 1; // Stable
+			await dai
+				.connect(tokenHolder)
+				.approve(aaveV2Wrapper.address, collateralAmount);
+			await aaveV2Wrapper
+				.connect(tokenHolder)
+				.depositAndBorrow(
+					collateralToken,
+					collateralAmount,
+					debtToken,
+					ethers.BigNumber.from(0),
+					rateMode
+				);
+			await aaveV2Wrapper
+				.connect(tokenHolder)
+				.depositAndBorrow(
+					collateralToken,
+					ethers.BigNumber.from(0),
+					debtToken,
+					debtAmount,
+					rateMode
+				);
+			const stableDebtTokenBalance = await new ethers.Contract(
+				mainnetWETHStableDebtContractAddress,
+				StableDebtTokenABI,
+				tokenHolder
+			).balanceOf(aaveV2Wrapper.address);
+			expect(stableDebtTokenBalance).to.be.greaterThanOrEqual(debtAmount);
+			expect(
+				await aaveV2Wrapper.getUserDebtBalance(
+					mainnetWETHContractAddress,
+					tokenHolder.address,
+					rateMode
+				)
+			).to.equal(debtAmount);
+		});
+
+		it("Should allow a second user to deposit and borrow funds correctly", async function () {
+			const { aaveV2Wrapper, dai, weth, owner, tokenHolder } =
+				await loadFixture(deployFixture);
+			const collateralToken = dai.address;
+			const collateralAmount = ethers.utils.parseUnits("10000");
+			const debtToken = weth.address;
+			const debtAmount = ethers.utils.parseEther("1");
+			const rateMode = 1; // Stable
+
+			await dai
+				.connect(tokenHolder)
+				.approve(aaveV2Wrapper.address, collateralAmount);
+
+			await dai.connect(tokenHolder).transfer(owner.address, collateralAmount);
+
+			await aaveV2Wrapper
+				.connect(tokenHolder)
+				.depositAndBorrow(
+					collateralToken,
+					collateralAmount,
+					debtToken,
+					debtAmount,
+					rateMode
+				);
+
+			await dai.connect(owner).approve(aaveV2Wrapper.address, collateralAmount);
+
+			await aaveV2Wrapper.depositAndBorrow(
+				collateralToken,
+				0,
+				debtToken,
+				debtAmount,
+				rateMode
+			);
+			const stableDebtTokenBalance = await new ethers.Contract(
+				mainnetWETHStableDebtContractAddress,
+				StableDebtTokenABI,
+				owner
+			).balanceOf(aaveV2Wrapper.address);
+			expect(stableDebtTokenBalance).to.be.greaterThanOrEqual(
+				debtAmount.mul(2)
+			);
+
+			const newWETHBalance = await weth.balanceOf(owner.address);
+			expect(newWETHBalance).to.equal(debtAmount);
+			expect(
+				await aaveV2Wrapper.getUserDepositBalance(
+					mainnetDAIContractAddress,
+					owner.address
+				)
+			).to.equal(0);
+			expect(
+				await aaveV2Wrapper.getUserDebtBalance(
+					mainnetWETHContractAddress,
+					owner.address,
+					rateMode
+				)
+			).to.equal(debtAmount);
+		});
 	});
 
 	describe("paybackAndWithdraw tests", function () {

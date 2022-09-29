@@ -29,10 +29,12 @@ contract AaveV2Wrapper {
         lendingPool = ILendingPool(POOL);
     }
 
+    // User logging
     mapping(address => mapping(address => uint256)) private userDeposits;
     mapping(address => mapping(address => mapping(uint256 => uint256)))
         private userDebts;
 
+    // Events
     event DepositAndBorrow(
         address collateralToken,
         uint256 collateralAmount,
@@ -50,6 +52,8 @@ contract AaveV2Wrapper {
         uint256 rateMode,
         address user
     );
+
+    //Public functions
 
     /**
      * @dev collateralToken, borrow debtToken. Must recieve contract address and amounts for both tokens.
@@ -74,6 +78,7 @@ contract AaveV2Wrapper {
             );
             IERC20(collateralToken).approve(POOL, collateralAmount);
             _deposit(collateralToken, collateralAmount);
+            lendingPool.setUserUseReserveAsCollateral(collateralToken, true);
             userDeposits[collateralToken][msg.sender] += collateralAmount;
         }
 
@@ -142,6 +147,8 @@ contract AaveV2Wrapper {
         return (amountRepayed, amountWithdrawn);
     }
 
+    // Internal functions
+
     /**
      * @dev Deposits an `amount` of underlying asset into the reserve, receiving in return overlying aTokens.
      * - E.g. User deposits 100 USDC and gets in return 100 aUSDC
@@ -205,6 +212,8 @@ contract AaveV2Wrapper {
     ) internal returns (uint256) {
         return lendingPool.repay(token, amount, rateMode, address(this));
     }
+
+    // Getters
 
     function getUserDepositBalance(address token, address user)
         public

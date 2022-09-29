@@ -50,8 +50,14 @@ contract AaveV2Wrapper {
         address user
     );
 
-    // deposit collateralToken, borrow debtToken. Must recieve contract address and amounts for both tokens.
-    // Note: Balance to deposit collateral can be taken from caller
+    /**
+     * @dev collateralToken, borrow debtToken. Must recieve contract address and amounts for both tokens.
+     * Note: Balance to deposit collateral can be taken from caller
+     * @param collateralToken The address of the underlying asset to deposit as collateral
+     * @param collateralAmount The amount of the underlying asset to deposit as collateral
+     * @param debtToken The address of the token to be borrowed
+     * @param debtToken The amount of the token to be borrowed
+     **/
     function depositAndBorrow(
         address collateralToken,
         uint256 collateralAmount,
@@ -92,31 +98,47 @@ contract AaveV2Wrapper {
         }
     }
 
-    // payback debtToken and withdraw the collateralToken
-    // Note: Balance to payback debt can be taken from caller
+    /**
+     * @dev payback debtToken and withdraw the collateralToken
+     * Note: Balance to payback debt can be taken from caller
+     * @param collateralToken The address of the underlying asset to withdraw
+     * @param collateralAmount The amount of the underlying asset to withdraw
+     * @param debtToken The address of the debt token to be repayed
+     * @param debtToken The amount of the debt token to be repayed
+     **/
     function paybackAndWithdraw(
         address collateralToken,
         uint256 collateralAmount,
         address debtToken,
         uint256 debtAmount,
         uint256 rateMode
-    ) public {
+    ) public returns (uint256, uint256) {
         IERC20(debtToken).transferFrom(msg.sender, address(this), debtAmount);
         IERC20(debtToken).approve(POOL, debtAmount);
-        _repay(debtToken, debtAmount, rateMode);
-        userDebts[debtToken][msg.sender][rateMode] -= debtAmount;
+        uint256 amountRepayed = _repay(debtToken, debtAmount, rateMode);
+        userDebts[debtToken][msg.sender][rateMode] -= amountRepayed;
 
-        _withdraw(collateralToken, collateralAmount, msg.sender);
-        userDeposits[collateralToken][msg.sender] -= collateralAmount;
+        // If there are remaining funds from the user after repaying, return them
+        if (amountRepayed < debtAmount) {
+            IERC20(debtToken).transfer(msg.sender, debtAmount - amountRepayed);
+        }
+
+        uint256 amountWithdrawn = _withdraw(
+            collateralToken,
+            collateralAmount,
+            msg.sender
+        );
+        userDeposits[collateralToken][msg.sender] -= amountWithdrawn;
 
         emit PaybackAndWithdraw(
             collateralToken,
-            collateralAmount,
+            amountWithdrawn,
             debtToken,
-            debtAmount,
+            amountRepayed,
             rateMode,
             msg.sender
         );
+        return (amountRepayed, amountWithdrawn);
     }
 
     /**

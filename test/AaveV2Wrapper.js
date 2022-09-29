@@ -216,7 +216,7 @@ describe("AaveV2Wrapper tests", function () {
 			).to.equal(debtAmount);
 		});
 
-		it("Should allow a second user to deposit and borrow funds correctly", async function () {
+		it("Should allow a second user to borrow funds after first user deposited", async function () {
 			const { aaveV2Wrapper, dai, weth, owner, tokenHolder } =
 				await loadFixture(deployFixture);
 			const collateralToken = dai.address;
@@ -305,7 +305,6 @@ describe("AaveV2Wrapper tests", function () {
 			await weth
 				.connect(tokenHolder)
 				.approve(aaveV2Wrapper.address, debtAmount);
-
 			expect(
 				await aaveV2Wrapper
 					.connect(tokenHolder)
@@ -326,6 +325,7 @@ describe("AaveV2Wrapper tests", function () {
 					rateMode,
 					tokenHolder.address
 				);
+
 			const aTokenBalance = await new ethers.Contract(
 				mainnetaDAIContractAddress,
 				IATokenABI,
@@ -341,7 +341,7 @@ describe("AaveV2Wrapper tests", function () {
 				tokenHolder
 			).balanceOf(aaveV2Wrapper.address);
 			expect(stableDebtTokenBalance).to.be.lessThanOrEqual(
-				debtAmount.mul(1).div(100) //1 %, to contemplate interests
+				debtAmount.div(100) //1 %, to contemplate interests
 			);
 
 			const newWETHBalance = await weth.balanceOf(tokenHolder.address);

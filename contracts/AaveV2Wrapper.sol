@@ -15,13 +15,13 @@ import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfa
 
 contract AaveV2Wrapper {
     // Mainnet
-    address constant PROTOCOL_DATA_PROVIDER =
+    address public constant PROTOCOL_DATA_PROVIDER =
         address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
-    IProtocolDataProvider constant dataProvider =
+    IProtocolDataProvider public constant dataProvider =
         IProtocolDataProvider(PROTOCOL_DATA_PROVIDER);
 
     address POOL;
-    ILendingPool lendingPool;
+    ILendingPool immutable lendingPool;
 
     constructor() public {
         POOL = ILendingPoolAddressesProvider(dataProvider.ADDRESSES_PROVIDER())
@@ -29,8 +29,9 @@ contract AaveV2Wrapper {
         lendingPool = ILendingPool(POOL);
     }
 
-    mapping(address => mapping(address => uint256)) userDeposits;
-    mapping(address => mapping(address => mapping(uint256 => uint256))) userDebts;
+    mapping(address => mapping(address => uint256)) private userDeposits;
+    mapping(address => mapping(address => mapping(uint256 => uint256)))
+        private userDebts;
 
     event DepositAndBorrow(
         address collateralToken,

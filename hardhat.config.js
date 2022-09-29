@@ -7,7 +7,6 @@ const CHAIN_IDS = {
 const FORK_BLOCK = 15618588;
 
 const infuraProjectId = process.env.INFURA_PROJECT_ID;
-const privateKey = process.env.DEPLOYER_SIGNER_PRIVATE_KEY;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {

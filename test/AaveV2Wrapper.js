@@ -64,9 +64,8 @@ describe("AaveV2Wrapper tests", function () {
 			await dai
 				.connect(tokenHolder)
 				.approve(aaveV2Wrapper.address, collateralAmount);
-			let tx;
 			expect(
-				(tx = await aaveV2Wrapper
+				await aaveV2Wrapper
 					.connect(tokenHolder)
 					.depositAndBorrow(
 						collateralToken,
@@ -74,7 +73,7 @@ describe("AaveV2Wrapper tests", function () {
 						debtToken,
 						debtAmount,
 						rateMode
-					))
+					)
 			)
 				.to.emit(aaveV2Wrapper, "DepositAndBorrow")
 				.withArgs(

@@ -106,9 +106,7 @@ contract AaveV2Wrapper {
         _repay(debtToken, debtAmount, rateMode);
         userDebts[debtToken][msg.sender][rateMode] -= debtAmount;
 
-        _withdraw(collateralToken, collateralAmount);
-
-        IERC20(collateralToken).transfer(msg.sender, collateralAmount);
+        _withdraw(collateralToken, collateralAmount, msg.sender);
         userDeposits[collateralToken][msg.sender] -= collateralAmount;
 
         emit PaybackAndWithdraw(
@@ -157,13 +155,15 @@ contract AaveV2Wrapper {
      * @param token The address of the underlying asset to withdraw
      * @param amount The underlying amount to be withdrawn
      *   - Send the value type(uint256).max in order to withdraw the whole aToken balance
+     * @param user The address who will recieve thee underlying asset.
      * @return The final amount withdrawn
      **/
-    function _withdraw(address token, uint256 amount)
-        internal
-        returns (uint256)
-    {
-        return lendingPool.withdraw(token, amount, address(this));
+    function _withdraw(
+        address token,
+        uint256 amount,
+        address user
+    ) internal returns (uint256) {
+        return lendingPool.withdraw(token, amount, user);
     }
 
     /**

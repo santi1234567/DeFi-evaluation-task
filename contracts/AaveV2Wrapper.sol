@@ -4,16 +4,14 @@ pragma solidity >=0.6.0 <0.9.0;
 // Uncomment this line to use console.log
 import "hardhat/console.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
-import {DataTypes} from "@aave/protocol-v2/contracts/protocol/libraries/types/DataTypes.sol";
 import {IERC20} from "@aave/protocol-v2/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import {IProtocolDataProvider} from "./interfaces/IProtocolDataProvider.sol";
 import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
 
-//import {IAToken} from "@aave/protocol-v2/contracts/interfaces/IAToken.sol";
-//import {IStableDebtToken} from "@aave/protocol-v2/contracts/interfaces/IStableDebtToken.sol";
-//import {IVariableDebtToken} from "@aave/protocol-v2/contracts/interfaces/IVariableDebtToken.sol";
-
 contract AaveV2Wrapper {
+    address owner;
+    address[] validUsers;
+
     // Mainnet
     address public constant PROTOCOL_DATA_PROVIDER =
         address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
@@ -27,12 +25,8 @@ contract AaveV2Wrapper {
         POOL = ILendingPoolAddressesProvider(dataProvider.ADDRESSES_PROVIDER())
             .getLendingPool();
         lendingPool = ILendingPool(POOL);
+        owner = msg.sender;
     }
-
-    // User logging
-    mapping(address => mapping(address => uint256)) private userDeposits;
-    mapping(address => mapping(address => mapping(uint256 => uint256)))
-        private userDebts;
 
     // Events
     event DepositAndBorrow(
@@ -53,7 +47,19 @@ contract AaveV2Wrapper {
         address user
     );
 
-    //Public functions
+    // Modifiers
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier OnlyValidUser() {
+        require(_isValidUser(msg.sender), "Not a valid user");
+        _;
+    }
+
+    // Public functions
 
     /**
      * @dev collateralToken, borrow debtToken. Must recieve contract address and amounts for both tokens.
@@ -69,7 +75,7 @@ contract AaveV2Wrapper {
         address debtToken,
         uint256 debtAmount,
         uint256 rateMode
-    ) public {
+    ) public OnlyValidUser {
         if (collateralAmount > 0) {
             IERC20(collateralToken).transferFrom(
                 msg.sender,
@@ -79,18 +85,10 @@ contract AaveV2Wrapper {
             IERC20(collateralToken).approve(POOL, collateralAmount);
             _deposit(collateralToken, collateralAmount);
             lendingPool.setUserUseReserveAsCollateral(collateralToken, true);
-            userDeposits[collateralToken][msg.sender] += collateralAmount;
         }
-
-        /*         (
-            address aDebtTokenAddress,
-            address stableDebtTokenAddress,
-            address variableDebtTokenAddress
-        ) = dataProvider.getReserveTokensAddresses(debtToken); */
 
         if (debtAmount > 0) {
             _borrow(debtToken, debtAmount, rateMode);
-            userDebts[debtToken][msg.sender][rateMode] += debtAmount;
             IERC20(debtToken).transfer(msg.sender, debtAmount);
 
             emit DepositAndBorrow(
@@ -118,23 +116,36 @@ contract AaveV2Wrapper {
         address debtToken,
         uint256 debtAmount,
         uint256 rateMode
-    ) public returns (uint256, uint256) {
-        IERC20(debtToken).transferFrom(msg.sender, address(this), debtAmount);
-        IERC20(debtToken).approve(POOL, debtAmount);
-        uint256 amountRepayed = _repay(debtToken, debtAmount, rateMode);
-        userDebts[debtToken][msg.sender][rateMode] -= amountRepayed;
-
-        // If there are remaining funds from the user after repaying, return them
-        if (amountRepayed < debtAmount) {
-            IERC20(debtToken).transfer(msg.sender, debtAmount - amountRepayed);
+    ) public OnlyValidUser returns (uint256, uint256) {
+        uint256 amountRepayed;
+        if (debtAmount > 0) {
+            IERC20(debtToken).transferFrom(
+                msg.sender,
+                address(this),
+                debtAmount
+            );
+            IERC20(debtToken).approve(POOL, debtAmount);
+            amountRepayed = _repay(debtToken, debtAmount, rateMode);
+            // If there are remaining funds from the user after repaying, return them
+            if (amountRepayed < debtAmount) {
+                IERC20(debtToken).transfer(
+                    msg.sender,
+                    debtAmount - amountRepayed
+                );
+            }
+        } else {
+            amountRepayed = debtAmount;
         }
-
-        uint256 amountWithdrawn = _withdraw(
-            collateralToken,
-            collateralAmount,
-            msg.sender
-        );
-        userDeposits[collateralToken][msg.sender] -= amountWithdrawn;
+        uint256 amountWithdrawn;
+        if (collateralAmount > 0) {
+            amountWithdrawn = _withdraw(
+                collateralToken,
+                collateralAmount,
+                msg.sender
+            );
+        } else {
+            amountWithdrawn = collateralAmount;
+        }
 
         emit PaybackAndWithdraw(
             collateralToken,
@@ -213,21 +224,33 @@ contract AaveV2Wrapper {
         return lendingPool.repay(token, amount, rateMode, address(this));
     }
 
-    // Getters
-
-    function getUserDepositBalance(address token, address user)
-        public
-        view
-        returns (uint256)
-    {
-        return userDeposits[token][user];
+    function _isValidUser(address userAddress) internal view returns (bool) {
+        for (uint256 i = 0; i < validUsers.length; i++) {
+            if (validUsers[i] == userAddress) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    function getUserDebtBalance(
-        address token,
-        address user,
-        uint256 rateMode
-    ) public view returns (uint256) {
-        return userDebts[token][user][rateMode];
+    // Setters
+
+    function addValidUser(address userAddress) public onlyOwner {
+        validUsers.push(userAddress);
+    }
+
+    function removeValidUser(address userAddress) public onlyOwner {
+        for (uint256 i = 0; i < validUsers.length; i++) {
+            if (validUsers[i] == userAddress) {
+                validUsers[i] = validUsers[validUsers.length - 1];
+                validUsers.pop();
+            }
+        }
+    }
+
+    // Getters
+
+    function getValidUsers() public view returns (address[] memory) {
+        return validUsers;
     }
 }

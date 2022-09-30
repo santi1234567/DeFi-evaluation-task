@@ -2,6 +2,8 @@
 
 This project consists of the development of a wrapper contract for the [Aave V2 lending pool](https://docs.aave.com/developers/v/2.0/). It was built as an InstaDapp Evaluation task. The assignment can be found in [Evaluation-Task.pdf](https://github.com/santi1234567/Instadapp-evaluation-task/blob/main/Evaluation-Task.pdf).
 
+I added the `sh rateMode ` parameter to the functions. The contract allows users to interact with the lending pool utilizing a collective collateral pool.
+
 For testing, a mainnet fork is used. The provider is Infura.
 
 ## Usage
